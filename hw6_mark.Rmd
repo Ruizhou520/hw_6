@@ -419,7 +419,7 @@ df_gaussians_longer3 <- df_gaussians%>%
 
 # now show the plot
 df_gaussians_longer3%>%ggplot(aes(x=x, y=Quantile, color=Gaussians,linetype=Gaussians))+
-  geom_line(na.rm = TRUE)
+  geom_line(na.rm = TRUE)+xlim(0,1)
 ```
 
 the quantile function and cumulative distribution function are complementary functions
