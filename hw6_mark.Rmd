@@ -1,0 +1,634 @@
+---
+title: "hw6_mark"
+author: "Ruizhou Peng"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+load the package
+```{r}
+library(tidyverse)
+```
+
+## 1. Continuous random variables and limit laws
+
+we will explore several continuous random variables and the limiting behaviours of sequences of i.i.d. random variables
+
+### 1.1 Simulating data with the uniform distribution
+
+**q1**: 
+
+$$
+\mathbb{P}(U\in [a,b]) = \mathbb{P}_U(x\in[0,1])*length([a,b]\cap [0,1])\\
+=1*(b-a)=b-a
+$$
+
+**q2**:
+
+X on {0,3,10}, P(X=3)=$\alpha$, P(X=10)=$\beta$, P(X=0)=$1-\alpha-\beta$ 
+
+with $\alpha=\beta=0.25$, generate a sequence of i.i.d. X~i~ of X:
+
+```{r}
+set.seed(0)
+n <- 1000
+# 0 --> P=0.5
+# 3 --> P=0.25
+# 10 --> P=0.25
+
+sample_X <- data.frame(U=runif(n))%>%
+  mutate(X=case_when(
+    (0<=U)&(U<0.25)~3,
+    (0.25<=U)&(U<0.5)~10,
+    (0.5<=U)&(U<=1)~0
+  ))%>%
+  pull(X)
+```
+
+```{r}
+head(sample_X,10)
+```
+
+proof: why does sample_X correspond to a sequence of i.i.d. copies X~1~, X~2~,..., X~n~ of X?
+
+Hint: finding P(X~i~=3),P(X~i~=10)... for the generated X~i~
+
+ans: 
+
+for each X~i~, since it is independently generated from U, so they are independent and identical random variables.
+that is: P(X~1~)=P(X~2~)=...=P(X~n~)
+
+since for each X~i~, 
+
+$$
+X_i = \begin{cases}
+3, \quad U\in[0,0.25)\\
+10, \quad U\in[0.25. 0.5)\\
+0, \quad U\in [0.5, 1]
+\end{cases}
+$$
+due to U is a uniform distribution variable, the probability mass function of X~i~ is:
+
+$$
+P_{X_i}(x)=\begin{cases}
+P_U(U\in[0,0.25))=0.25, \quad x=3\\
+P_U(U\in[0.25,0.5))=0.25. \quad x=10\\
+P_U(U\in[0.5,1])=0.5, \quad x=0 \\
+P_U(U\notin [0,1])=0. \quad x\notin\{0,3,10\}
+\end{cases}
+$$
+it is the same as X, so X~1~, X~2~,...,X~n~ are i.i.d. copies of X
+
+
+**q3**:
+
+create a function **sample_X_0310** which takes as inputs alpha, beta and n and outputs a sample X~1~,X~2~,...,X~n~ copies of X where alpha=beta=0.25
+
+```{r}
+sample_X_0310 <- function(alpha, beta, n){
+  sample_X <- runif(n)
+  
+  sample_X[0<=sample_X & sample_X<alpha] = 3
+  sample_X[alpha<=sample_X & sample_X<alpha+beta] = 10
+  sample_X[alpha+beta<=sample_X & sample_X<=1] = 0
+  
+  return(sample_X)
+}
+
+#check
+sample_X_0310(0.25,0.25, 10)
+```
+
+**q4**:
+
+let alpha=0.5, beta=0.1, use the function above to create a sample of size n=10000, what is the sample average of X~n~?
+How does this compare with the theoretical value of $\mathbb{E}(X)$?Then use the understanding of the law of large numbers to explain
+
+
+ans:
+```{r}
+# first generate the sequence of Xi
+seq_X <- sample_X_0310(0.5,0.1,10000)
+
+# then compute the sample average
+sample_average <- mean(seq_X)
+
+print(sample_average)
+```
+
+the theoretical value of $\mathbb{E}(X)=\alpha*3+\beta*10=2.5$, which is very near the value of sample average.
+
+According to the law of large numbers, when n goes large, the sample mean $\frac{\sum_{i=1}^n X_i}{n}$ of i.i.d. random variables X~i~ converges to $\mathbb{E}(X)$ 
+
+
+**q5**:
+
+```{r}
+# use the seq_X above to compute sample variance
+sample_var <- var(seq_X)
+
+print(sample_var)
+```
+
+the population variance Var(X) is:
+$Var(X)=9\alpha+100\beta-9\alpha^2-100\beta^2-60\alpha\beta\\=8.25$, this time the difference is also not much
+
+
+**q6**:
+
+now take n=100, $\alpha=0.1$ and vary $\beta$ from 0 to 0.9 with increment of 0.01, create a data frame with four columns: beta, sample_X, sample_mean, expectation
+
+```{r}
+n<-100
+alpha <- 0.1
+
+df <- data.frame(beta=seq(0,0.9,0.01))%>%
+  mutate(sample_X=map(beta, ~sample_X_0310(alpha, .x, n)))%>%
+  mutate(sample_mean=map_dbl(sample_X, mean))%>%
+  mutate(Expectation=map_dbl(beta, ~.x*10+3*alpha))
+
+# check 
+head(df,10)
+```
+
+**q7**:
+
+create a plot of the sample averages and $\mathbb{E}(X)$ as a function of $\beta$
+
+```{r}
+# first tidy the df to be pivot longer
+df_longer <- df%>%pivot_longer(cols=c(sample_mean,Expectation), names_to='name', values_to='value')
+
+# then use point plot to show it 
+df_longer %>% ggplot(aes(x=beta, y= value, color=name))+
+  geom_point()
+```
+
+### 1.2 Exponential distribution
+
+**q1**:
+
+proof:
+
+$$
+\int_{-\infty}^{\infty} p_\lambda(x) = \int_{-\infty}^00\;dx+\int_{0}^{+\infty}\lambda e^{-\lambda x}\;dx=0-e^{-\lambda x}\;|_0^{+\infty}=1
+$$
+
+so $p_\lambda (x)$ is well-defined probability density function
+
+$$
+F_X(x) = p_\lambda(X\le x) = \int_{-\infty}^x\lambda e^{-\lambda x}\;dx = -e^{-\lambda x} \; |_0^x = 1-e^{-\lambda x}
+$$
+
+
+**q2**:
+
+create a function **my_cdf_exp**, which takes two number x and $\lambda>0$ as input and output the cumulative distribution function F~X~(x) where X is an exponential random variable with rate parameter $\lambda$
+
+```{r}
+# x is a real number and lambda > 0
+my_cdf_exp <- function(x, lambda){
+  if(x < 0)
+    return(0)
+  
+  res <- 1-exp(-lambda*x)
+  
+  return(res)
+}
+
+# check 
+lambda <- 1/2
+map_dbl(.x=seq(-1,4), .f=~my_cdf_exp(.x, lambda))
+```
+
+then learn function **pexp** for inbuilt cumulative distribution function of the exponential distribution
+
+```{r}
+test_inputs <- seq(-1, 10, 0.1)
+# output of self create cdf function
+my_cdf_output <- map_dbl(test_inputs, ~my_cdf_exp(.x, lambda))
+# output of inbuilt cdf function:
+# pexp-->distribution function of exponent distribution
+inbuild_cdf_output <- map_dbl(test_inputs, ~pexp(.x, rate=lambda))
+                              
+# compare two outputs
+all.equal(inbuild_cdf_output, my_cdf_output)
+```
+
+
+**q3**:
+
+implement a function **my_quantile_exp**, which should take as input two arguments p$\in$[0,1] and $\lambda$>0, and output the value of the quantile function $F_X^{-1}(p)$ where X is an expomential random variable with rate parameter $\lambda$
+
+```{r}
+my_quantile_exp <- function(p, lambda){
+  x <- log(1-p)/(-lambda)
+  
+  return(x)
+}
+
+# check with inbuilt function qexp
+# qexp-->quantile of exponent distribution
+seq_p <- seq(0.01, 0.99, 0.01)
+
+# using self-made quantile function
+my_qexp <- map_dbl(seq_p, ~my_quantile_exp(.x, lambda))
+
+# using inbuilt quantile exponent function
+inbuilt_qexp <- map_dbl(seq_p, ~qexp(.x, rate=lambda))
+
+# compare
+all.equal(my_qexp, inbuilt_qexp)
+```
+
+
+**q4**:
+
+derive an expression for the population mean and variance of an exponential random variable X with parameter $\lambda$
+
+$$
+Mean = \int_{-\infty}^{+\infty}xP_X(x)dx=\int_{-\infty}^0x*0dx+\int_0^{+\infty}x(\lambda e^{-\lambda x})dx\\
+
+let \quad z=\lambda x\in[0,+\infty)\\
+\therefore Mean = \frac{1}{\lambda}\int_0^{+\infty}ze^{-z}dz\\
+let \; u=z, \;\; v = e^{-z}, \frac{du}{dz}=1,\frac{dv}{dz}=-e^{-z}\\
+\therefore Mean=\frac{-1}{\lambda}\int_0^{+\infty}u\frac{dv}{dz}dz\\
+= \frac{-1}{\lambda}\left[uv|_0^{+\infty}-\int_0^{+\infty}v\frac{du}{dz}dz\right]\\
+= \frac{-1}{\lambda}\left[uv|_0^{+\infty}-\int_0^{+\infty}e^{-z}dz\right]\\
+= \frac{-1}{\lambda}\left[uv|_0^{+\infty}+\int_0^{+\infty}-e^{-z}dz\right]\\
+= \frac{-1}{\lambda}\left[uv|_0^{+\infty}+e^{-z}|_0^{+\infty}\right]\\
+= \frac{1}{\lambda}
+$$
+
+$$
+Var = \mathbb{E}(X^2)-\mathbb{E}(X)^2=\int_{-\infty}^{+\infty}x^2P_X(x)dx-\frac{1}{\lambda^2}=\int_0^{+\infty}x^2 \lambda e^{-\lambda x}dx - \frac{1}{\lambda^2}\\
+= \frac{1}{\lambda^2}\int_0^{+\infty}\lambda^2x^2e^{-\lambda x}d\lambda x - \frac{1}{\lambda^2}\\
+let \; z=\lambda x, \;\; z \in[0,+\infty)\\
+\therefore Var= \frac{1}{\lambda^2}\int_0^{+\infty}z^2e^{-z}dz - \frac{1}{\lambda^2}\\
+let \; u = z^2, \; v = e^{-z}, \frac{du}{dz}=2z, \; \frac{dv}{dz} = -e^{-z}\\
+\therefore Var = \frac{-1}{\lambda^2}\int_0^{+\infty}u\frac{dv}{dz}dz - \frac{1}{\lambda^2}\\
+= \frac{-1}{\lambda^2}\left[ \int_0^{+\infty}u\frac{dv}{dz}dz +1 \right]\\
+= \frac{-1}{\lambda^2}\left[ uv|_0^{+\infty} - \int_0^{+\infty}v\frac{du}{dz}dz +1 \right]\\
+=  \frac{-1}{\lambda^2}\left[ uv|_0^{+\infty} - 2\int_0^{+\infty}ze^{-z}dz +1 \right]\\
+= \frac{-1}{\lambda^2}\left[ 0 - 2 +1 \right]\\
+= \frac{1}{\lambda^2}
+$$
+
+### 1.3 The Binomial distribution and the central limit theorem
+
+**q1**:
+
+give an expression for the expectation and variance of Z~Binom(n,p)
+
+ans: 
+
+since Binomial distribution is conducted from i.i.d. Bernoulli distribution random variables, and for Bernoulli distribution random variable X~i~, it has: $\mathbb{E}(X_i)=p \quad Var(X_i)=p-p^2$
+
+therefore, for Z~Binom(n,p), its expectation and variance are:
+$$
+E(Z) = nE(X_i)=np\\
+Var(Z) = nVar(X_i)=np-np^2=np(1-p)
+$$
+
+**q2**:
+
+use **dbinom** to compute the probability mass function of a Binomial random variable Z~Binom(n,p), let n = 50, p = 0.7, use **dbinom** to generate a data frame **binom_df** with two columns x and pmf, the first contains the number {0,1,2,...,50}, the second perform the probability mass function p~z~(x)
+
+```{r}
+n <- 50
+p <- 0.7
+
+binom_df <- data.frame(x=0:50)%>%
+  mutate(pmf=map_dbl(x, ~dbinom(.x, n, p)))
+
+# check
+head(binom_df, 5)
+```
+
+**q3**:
+
+function **dnorm** can be used to compute the probability density function of a Gaussian random variable W~N(u, sig^2^)
+
+consider a case where $\mu=50\cdot0.7$ and $\sigma=\sqrt{50\cdot 0.7\cdot(1-0.7)}$, use **dnorm** to generate a data frame **gaussian_df** with two columns x and pdf
+
+```{r}
+mu <- 50*0.7
+sigma <- sqrt(50*0.7*(1-0.7))
+gaussian_df <- data.frame(x=seq(0,50, 0.01))%>%
+  mutate(pdf=map_dbl(x, ~dnorm(.x, mu, sigma)))
+
+# check
+head(gaussian_df, 5)
+```
+
+
+**q4**:
+
+based on the **binom_df** and **gaussian_df**, generate a plot which compares the probability density for W and Z
+
+```{r}
+# using different color and fill to show pdf and pmf
+colors <- c('gaussian'='red', 'binomial'='blue')
+fill <- c('gaussian'='white', 'binomial'='white')
+
+# to show two different plots using one graph
+# don't set data or aes in ggplot, otherwise, set them in 
+# the corresponding plot
+
+# histogram is used to visualise a continuous variable
+# for discrete variable, they should use geom_bar or geom_col
+ggplot()+theme_bw()+
+  geom_line(data=gaussian_df, aes(x=x, y=pdf, color='gaussian'), size=2, na.rm=TRUE)+
+  geom_col(data=binom_df, aes(x=x, y=pmf, color='binomial', fill='binomial'), na.rm=TRUE)+
+  #set color and fill
+  scale_color_manual(name='colorLegend', values=colors)+
+  scale_fill_manual(name='fillLegend', values=fill)+
+  labs(x='X', y="probability")+
+  # limit the x range
+  xlim(c(20,50))
+```
+
+
+### 1.4 The Gaussian distribution
+
+look up **dnorm**, **pnorm**, **qnorm** and **rnorm**
+
+
+**q1**:
+
+generate a plot which displays the probability density function for three Gaussian random variables $X_1 \sim N(\mu_1, \sigma_1^2),\; X_2 \sim N(\mu_2, \sigma_2^2), \; X_3 \sim N(\mu_3, \sigma_3^2),$
+with $\mu_1=\mu_2=\mu_3=1$ and $\sigma_1^2=1, \sigma_2^2=2,\sigma_3^2=3$
+
+```{r}
+mu1 <- 1
+mu2 <- mu1
+mu3 <- mu1
+
+sigma1 <- 1
+sigma2 <- 2
+sigma3 <- 3
+df_gaussians <- data.frame(x=seq(-4,6, 0.01))%>%
+  mutate(gaussian1=map_dbl(x, ~dnorm(.x, mu1, sigma1)))%>%
+  mutate(gaussian2=map_dbl(x, ~dnorm(.x, mu2, sigma2)))%>%
+  mutate(gaussian3=map_dbl(x, ~dnorm(.x, mu3, sigma3)))
+
+# now tidy it
+df_gaussians_longer <- df_gaussians%>%pivot_longer(cols=!x, names_to = "Gaussians", values_to = "Density")
+
+# now show the plot
+df_gaussians_longer%>%ggplot(aes(x=x, y=Density, color=Gaussians,linetype=Gaussians))+
+  geom_line()
+```
+
+**q2**:
+
+generate a plot which displays the cumulative distribution function
+
+```{r}
+
+df_gaussians <- df_gaussians%>%
+  mutate(Gauss1_dist= map_dbl(x, ~pnorm(.x, mu1, sigma1)))%>%
+  mutate(Gauss2_dist= map_dbl(x, ~pnorm(.x, mu2, sigma2)))%>%
+  mutate(Gauss3_dist= map_dbl(x, ~pnorm(.x, mu3, sigma3)))
+
+# tidy it
+df_gaussians_longer2 <- df_gaussians%>%
+  #select(!gaussian1:gaussian3)%>%
+  pivot_longer(cols=Gauss1_dist:Gauss3_dist, values_to = "Distribution", names_to = "Gaussians")
+
+# now show the plot
+df_gaussians_longer2%>%ggplot(aes(x=x, y=Distribution, color=Gaussians,linetype=Gaussians))+
+  geom_line()
+```
+
+
+**q3**:
+
+generate the quantile function
+
+```{r}
+df_gaussians <- df_gaussians%>%
+  mutate(Gauss1_quan= map_dbl(x, ~qnorm(.x, mu1, sigma1)))%>%
+  mutate(Gauss2_quan= map_dbl(x, ~qnorm(.x, mu2, sigma2)))%>%
+  mutate(Gauss3_quan= map_dbl(x, ~qnorm(.x, mu3, sigma3)))
+
+# tidy it
+df_gaussians_longer3 <- df_gaussians%>%
+  #select(!gaussian1:gaussian3)%>%
+  pivot_longer(cols=Gauss1_quan:Gauss3_quan, values_to = "Quantile", names_to = "Gaussians")
+
+# now show the plot
+df_gaussians_longer3%>%ggplot(aes(x=x, y=Quantile, color=Gaussians,linetype=Gaussians))+
+  geom_line(na.rm = TRUE)
+```
+
+the quantile function and cumulative distribution function are complementary functions
+
+
+**q4**:
+
+use **rnorm** to generate a random i.i.d. sequence Z~1~,Z~2~,...,Z~n~ $\sim N(0,1)$, set n=100, store the random sample in a vector
+
+```{r}
+n <- 100
+set.seed(0)
+standardGaussianSample <- rnorm(n, 0, 1)
+
+# check
+head(standardGaussianSample, 10)
+```
+
+**q5**:
+
+generate a new sample of the form Y1, Y2, ..., Yn $\sim N(1,3)$ and store them in **mean1Var3GaussianSampleA**, use **standardGaussianSample** with $\alpha,\; \beta$ transform to it
+
+ans: 
+
+if $Z\sim N(0,1)$ and $W = \alpha Z+\beta$, then $W\sim N(\beta,\alpha^2)$, now to compute $Y\sim N(1,3)$, let $\beta=1,\;\alpha=\sqrt{3}$
+
+```{r}
+mean1Var3GaussianSampleA <- sqrt(3)*standardGaussianSample+1
+```
+
+**q6**:
+
+use **rnorm** to generate Y~1~, Y~2~, ..., Y~n~ and compare with the vector above
+
+```{r}
+set.seed(0)
+mean1Var3GaussianSampleB <- rnorm(n, 1, sqrt(3))
+
+all.equal(mean1Var3GaussianSampleA, mean1Var3GaussianSampleB)
+```
+
+
+**q7**:
+
+generate a graph which includes both a kernel density with mean1Var3GaussianSampleA and the population density generated from **dnorm**. 
+
+```{r}
+# use geom_density to show the kernel density
+# geom_vline to show the mean of kernel density and population density
+Size <- 1.25
+colors <- c('kernel'='red', 'population'='blue')
+linetypes <- c('kernel'='solid', 'population'='dashed')
+
+df_kernel <- data.frame(x=1:n, samples=mean1Var3GaussianSampleA)
+df_population <- data.frame(x=seq(-5,5,0.1))%>%
+  mutate(density=map_dbl(x, ~dnorm(.x, 1, sqrt(3))))
+
+kernel_mean = mean(df_kernel%>%pull(samples), na.rm = TRUE)
+# use geom_density to show kernel density
+ggplot()+theme_bw()+labs(x='X', y='Density', legend='Legend')+
+  geom_density(data=df_kernel, aes(samples, color='kernel', linetype='kernel'),size=Size)+
+  geom_line(data=df_population, aes(x=x, y=density, color='population', linetype='population'),size=Size, na.rm = TRUE)+
+  geom_vline(aes(xintercept = 1,color='population',linetype='population'),size=Size)+
+  geom_vline(aes(xintercept = kernel_mean, color='kernel',linetype='kernel'),size=Size)+
+  scale_color_manual(values = colors)+
+  xlim(c(-4,5))+
+  scale_linetype_manual(values= linetypes)
+  
+```
+
+
+**q8**:
+
+derive P(c<= W <= d) from P(a<=X<=b) and W=$\alpha X+\beta$ with X\~N(0,1)
+
+to prove it holds, then prove the following expression is a Gaussian distribution
+$$
+P(c\le W\le d)=\int_c^d \frac{1}{\sigma\sqrt{2\pi}}e^{\frac{-1}{2}(\frac{w-\mu}{\sigma})^2}dw
+$$
+
+
+## 2. Location estimators with Gaussian data
+
+compare two estimators for the population mean $\mu_0$ in a Gaussian setting in which we have i.i.d. data X~1~,X~2~,...,X~n~ $\sim N(\mu_0, \sigma_0^2)$ 
+
+compute a data frame consisting of the mean square error of the sample median as an estimator of $\mu_0$
+
+```{r}
+set.seed(0)
+num_trials_per_sample_size <- 1000
+min_sample_size <- 30
+max_sample_size <- 500
+sample_size_inc <- 5
+mu_0 <- 1
+sigma_0 <- 3
+
+# create data frame of all pairs of sample_size and trial
+
+# review crossing, expand and nesting
+simulation_df<-crossing(trial=seq(num_trials_per_sample_size),
+                        sample_size=seq(min_sample_size,
+                                        max_sample_size,sample_size_inc))%>%
+  # simulate sequences of Gaussian random variables
+  # .y means the second argument in the pmap function
+  mutate(simulation=pmap(.l=list(trial,sample_size),
+                        .f=~rnorm(.y,mean=mu_0,sd=sigma_0)))%>%
+  # compute the sample medians
+  mutate(sample_md=map_dbl(.x=simulation,.f=median))%>%
+  group_by(sample_size) %>%
+  summarise(msq_error_md=mean((sample_md-mu_0)^2))
+```
+
+
+**q1**:
+
+derive the mathematical expression for the population median of a Gaussian variable X~i~ $\sim N(\mu_0, \sigma_0^2)$
+
+$$
+let \ m <- mean\\
+F_{X_i}(x) = \int_{-\infty}^{x}\frac{1}{\sqrt{2\pi\sigma^2}}e^{-\frac{(t-\mu_0)^2}{2\sigma^2}}dt=0.5\\
+= \frac{1}{2}[1 + \text{erf}(\frac{x - \mu_0}{\sigma_0\sqrt{2}})] \quad where \;\; \text{erf}(x) = \frac{2}{\sqrt{\pi}} \int_{0}^{x} e^{-t^2} dt\\
+\therefore0=\text{erf}(\frac{x - \mu_0}{\sigma_0\sqrt{2}})\\
+\because the \ error\ function\ equals\ 0 \ at\ (x=0)\\
+\therefore \frac{m-\mu_0}{\sqrt{2}\sigma_0}=0\\
+\therefore m=\mu_0
+$$
+solution to solve erf:
+
+$$
+I^2 = \left(\int_{-\infty}^{+\infty}e^{-k^2}dk\right)^2
+$$
+This can be rewritten as a double integral:
+
+$$
+I^2 = \int_{-\infty}^{+\infty}\int_{-\infty}^{+\infty}e^{-(x^2+y^2)}dxdy
+$$
+
+Now, we switch to polar coordinates using $x = r\cos(\theta)$ and $y = r\sin(\theta)$, and $dxdy = rdrd\theta$. The limits of integration for (r) are from 0 to $\infty$, and for $\theta$ are from 0 to $2\pi$. So, the double integral becomes:
+
+$$
+I^2 = \int_{0}^{2\pi}\int_{0}^{\infty}r e^{-r^2}drd\theta
+$$
+The integral with respect to (r) can be solved by substituting $u = r^2$, which gives $du = 2rdr$. The integral then simplifies to:
+
+$$
+I^2 = \int_{0}^{2\pi}\int_{0}^{\infty}\frac{1}{2} e^{-u}dud\theta = \pi
+$$
+
+Taking the square root of both sides gives the original integral:
+
+$$
+I = \sqrt{\pi}
+$$
+**q2**:
+
+modify the above code to include estimates of the mean square error of the sample mean with a new column **msq_error_mn**, then generate a plot which includes both the mean square error of the sample mean and the sample median
+
+```{r}
+set.seed(0)
+num_trials_per_sample_size <- 1000
+min_sample_size <- 30
+max_sample_size <- 500
+sample_size_inc <- 5
+mu_0 <- 1
+sigma_0 <- 3
+
+# create data frame of all pairs of sample_size and trial
+# review crossing, expand and nesting
+simulation_df<-crossing(trial=seq(num_trials_per_sample_size),
+                        sample_size=seq(min_sample_size,
+                                        max_sample_size,sample_size_inc))%>%
+  # simulate sequences of Gaussian random variables
+  # .y means the second argument in the pmap function
+  mutate(simulation=pmap(.l=list(trial,sample_size),
+                        .f=~rnorm(.y,mean=mu_0,sd=sigma_0)))%>%
+  # compute the sample medians 
+  # !!!!and sample mean!!!!
+  mutate(sample_md=map_dbl(.x=simulation,.f=median),
+         sample_mn=map_dbl(.x=simulation,.f=mean))%>%
+  group_by(sample_size) %>%
+  # compute the msq_error of median and mean
+  summarise(msq_error_md=mean((sample_md-mu_0)^2),
+            msq_error_mn=mean((sample_mn-mu_0)^2))
+
+# tidy it
+simulation_df_long <- simulation_df%>%pivot_longer(cols=!sample_size, names_to = "Estimator", values_to =  "MSE")
+
+# using plot to show it
+# instead of using geom_line, we can use geom_smooth to show curve
+simulation_df_long%>%ggplot(aes(x=sample_size, y=MSE, color=Estimator, linetype=Estimator))+theme_bw()+geom_smooth(size=2)
+```
+
+
+## 3. The law of large numbers and Hoeffding's inequality
+
+Theorem (A law of large numbers):
+
+$$
+lim_{n->\infty} \mathbb{P}(|\frac{1}{n}\sum_{i=1}^n X_i-\mu|\ge \epsilon) = 0
+$$
+
+Chebyshev's inequality:
+
+$$
+\mathbb{P}(|Z-\mathbb{E}(Z)\ge t|)\le Var(Z)/t^2
+$$
+
+Theorem (Hoeffding): let X: $\Omega -> [0,1]$ be a bounded random variable
+
+$$
+\mathbb{P}(|\frac{1}{n}\sum_{i=1}^n X_i-\mu|\ge \epsilon)\le e^{-2n\epsilon^2}
+$$
